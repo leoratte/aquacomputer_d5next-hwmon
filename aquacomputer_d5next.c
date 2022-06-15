@@ -458,7 +458,6 @@ static int aqc_read_string(struct device *dev, enum hwmon_sensor_types type, u32
 		*str = priv->temp_label[channel];
 		break;
 	case hwmon_fan:
-	printk("attr %u, channel %i/n", attr,channel);
 		*str = priv->speed_label[channel];
 		break;
 	case hwmon_power:
