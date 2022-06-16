@@ -194,6 +194,7 @@ struct aqc_data {
 	int temp_sensor_start_offset;
 	u16 power_cycle_count_offset;
 	u8 flow_sensor_offset;
+	u8 flow_ctrl_offset;
 
 	/* General info, same across all devices */
 	u32 serial_number[2];
@@ -331,14 +332,30 @@ static umode_t aqc_is_visible(const void *data, enum hwmon_sensor_types type, u3
 		}
 		break;
 	case hwmon_fan:
-		switch (priv->kind) {
-		case quadro:
-			if (channel < priv->num_fans + 1) /* special case to support flow sensor */
-				return 0444;
+		switch (attr) {
+		case hwmon_fan_label:
+		case hwmon_fan_input:
+			switch (priv->kind) {
+			case quadro:
+				if (channel < priv->num_fans + 1) /* special case to support flow sensor */
+					return 0444;
+				break;
+			default:
+				if (channel < priv->num_fans)
+					return 0444;
+				break;
+			}
 			break;
+		case hwmon_fan_pulses:
+			switch (priv->kind) {
+			case quadro:
+				if (channel == priv->num_fans) /* special case to support flow sensor */
+					return 0644;
+				break;
+			default:
+				break;
+			}
 		default:
-			if (channel < priv->num_fans)
-				return 0444;
 			break;
 		}
 		break;
@@ -383,7 +400,28 @@ static int aqc_read(struct device *dev, enum hwmon_sensor_types type, u32 attr,
 		*val = priv->temp_input[channel];
 		break;
 	case hwmon_fan:
-		*val = priv->speed_input[channel];
+		switch (attr) {
+		case hwmon_fan_input:
+			*val = priv->speed_input[channel];
+			break;
+		case hwmon_fan_pulses:
+			switch (priv->kind) {
+			case quadro:
+				if(channel == priv->num_fans) {
+					ret = aqc_get_ctrl_val(priv, priv->flow_ctrl_offset);
+					if (ret < 0)
+						return ret;
+					*val = ret;
+				}
+				break;
+			default:
+				break;
+			}
+			break;
+		default:
+			break;
+		}
+		
 		break;
 	case hwmon_power:
 		*val = priv->power_input[channel];
@@ -463,6 +501,28 @@ static int aqc_write(struct device *dev, enum hwmon_sensor_types type, u32 attr,
 			break;
 		}
 		break;
+	case hwmon_fan:
+		switch (attr) {
+		case hwmon_fan_pulses:
+			switch (priv->kind) {
+			case quadro:
+				if (priv->num_fans == channel) {
+					if (val < 0)
+						return val;
+					
+					ret = aqc_set_ctrl_val(priv, priv->flow_ctrl_offset,val);
+					if (ret < 0)
+					return ret;
+				}
+				break;
+			default:
+				break;
+			}
+			break;
+		default:
+			break;
+		}
+		break;
 	default:
 		return -EOPNOTSUPP;
 	}
@@ -484,14 +544,14 @@ static const struct hwmon_channel_info *aqc_info[] = {
 			   HWMON_T_INPUT | HWMON_T_LABEL,
 			   HWMON_T_INPUT | HWMON_T_LABEL),
 	HWMON_CHANNEL_INFO(fan,
-			   HWMON_F_INPUT | HWMON_F_LABEL,
-			   HWMON_F_INPUT | HWMON_F_LABEL,
-			   HWMON_F_INPUT | HWMON_F_LABEL,
-			   HWMON_F_INPUT | HWMON_F_LABEL,
-			   HWMON_F_INPUT | HWMON_F_LABEL,
-			   HWMON_F_INPUT | HWMON_F_LABEL,
-			   HWMON_F_INPUT | HWMON_F_LABEL,
-			   HWMON_F_INPUT | HWMON_F_LABEL),
+			   HWMON_F_INPUT | HWMON_F_LABEL | HWMON_F_PULSES,
+			   HWMON_F_INPUT | HWMON_F_LABEL | HWMON_F_PULSES,
+			   HWMON_F_INPUT | HWMON_F_LABEL | HWMON_F_PULSES,
+			   HWMON_F_INPUT | HWMON_F_LABEL | HWMON_F_PULSES,
+			   HWMON_F_INPUT | HWMON_F_LABEL | HWMON_F_PULSES,
+			   HWMON_F_INPUT | HWMON_F_LABEL | HWMON_F_PULSES,
+			   HWMON_F_INPUT | HWMON_F_LABEL | HWMON_F_PULSES,
+			   HWMON_F_INPUT | HWMON_F_LABEL | HWMON_F_PULSES),
 	HWMON_CHANNEL_INFO(power,
 			   HWMON_P_INPUT | HWMON_P_LABEL,
 			   HWMON_P_INPUT | HWMON_P_LABEL,
@@ -587,7 +647,7 @@ static int aqc_raw_event(struct hid_device *hdev, struct hid_report *report, u8 
 		priv->voltage_input[2] = get_unaligned_be16(data + D5NEXT_5V_VOLTAGE) * 10;
 		break;
 	case quadro:
-		priv->speed_input[4] = get_unaligned_be16(data + priv->flow_sensor_offset) / 10;
+		priv->speed_input[priv->num_fans] = get_unaligned_be16(data + priv->flow_sensor_offset) / 10;
 		break;
 	default:
 		break;
@@ -741,6 +801,7 @@ static int aqc_probe(struct hid_device *hdev, const struct hid_device_id *id)
 		priv->power_cycle_count_offset = 0x18;
 		priv->buffer_size = 0x3c1;
 		priv->flow_sensor_offset = 0x6e;
+		priv->flow_ctrl_offset = 0x06;
 
 		priv->temp_label = label_temp_sensors;
 		priv->speed_label = label_fan_flow_speed_quadro;
