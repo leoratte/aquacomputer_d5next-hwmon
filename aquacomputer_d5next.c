@@ -192,6 +192,7 @@ struct aqc_data {
 	u16 *fan_ctrl_offsets;
 	int num_temp_sensors;
 	int temp_sensor_start_offset;
+	u16 temp_ctrl_offset;
 	u16 power_cycle_count_offset;
 	u8 flow_sensor_offset;
 
@@ -318,7 +319,18 @@ static umode_t aqc_is_visible(const void *data, enum hwmon_sensor_types type, u3
 	switch (type) {
 	case hwmon_temp:
 		if (channel < priv->num_temp_sensors)
-			return 0444;
+			switch (attr) {
+			case hwmon_temp_label:
+			case hwmon_temp_input:
+				return 0444;
+				break;
+			case hwmon_temp_offset:
+				if(priv->kind == quadro)
+					return 0644;
+				break;
+			default:
+				break;
+			}
 		break;
 	case hwmon_pwm:
 		if (priv->fan_ctrl_offsets != NULL && channel < priv->num_fans) {
@@ -377,10 +389,22 @@ static int aqc_read(struct device *dev, enum hwmon_sensor_types type, u32 attr,
 
 	switch (type) {
 	case hwmon_temp:
-		if (priv->temp_input[channel] == -ENODATA)
+		switch (attr) {
+		case hwmon_temp_input:
+			if (priv->temp_input[channel] == -ENODATA)
 			return -ENODATA;
 
-		*val = priv->temp_input[channel];
+			*val = priv->temp_input[channel];
+			break;
+		case hwmon_temp_offset:
+			if (priv->kind == quadro) {
+				ret = aqc_get_ctrl_val(priv, priv->temp_ctrl_offset + channel * AQC_TEMP_SENSOR_SIZE);
+				*val = 10 * ret;
+			}
+			break;
+		default:
+			break;
+		}
 		break;
 	case hwmon_fan:
 		*val = priv->speed_input[channel];
@@ -463,6 +487,20 @@ static int aqc_write(struct device *dev, enum hwmon_sensor_types type, u32 attr,
 			break;
 		}
 		break;
+	case hwmon_temp:
+		switch (attr) {
+		case hwmon_temp_offset:
+			if(priv->kind == quadro) {
+				ret = aqc_set_ctrl_val(priv, priv->temp_ctrl_offset + channel * AQC_TEMP_SENSOR_SIZE,
+								val/10);
+				if (ret < 0)
+					return ret;
+			}
+			break;
+		default:
+			break;
+		}
+		break;
 	default:
 		return -EOPNOTSUPP;
 	}
@@ -479,10 +517,10 @@ static const struct hwmon_ops aqc_hwmon_ops = {
 
 static const struct hwmon_channel_info *aqc_info[] = {
 	HWMON_CHANNEL_INFO(temp,
-			   HWMON_T_INPUT | HWMON_T_LABEL,
-			   HWMON_T_INPUT | HWMON_T_LABEL,
-			   HWMON_T_INPUT | HWMON_T_LABEL,
-			   HWMON_T_INPUT | HWMON_T_LABEL),
+			   HWMON_T_INPUT | HWMON_T_LABEL | HWMON_T_OFFSET,
+			   HWMON_T_INPUT | HWMON_T_LABEL | HWMON_T_OFFSET,
+			   HWMON_T_INPUT | HWMON_T_LABEL | HWMON_T_OFFSET,
+			   HWMON_T_INPUT | HWMON_T_LABEL | HWMON_T_OFFSET),
 	HWMON_CHANNEL_INFO(fan,
 			   HWMON_F_INPUT | HWMON_F_LABEL,
 			   HWMON_F_INPUT | HWMON_F_LABEL,
@@ -741,6 +779,7 @@ static int aqc_probe(struct hid_device *hdev, const struct hid_device_id *id)
 		priv->power_cycle_count_offset = 0x18;
 		priv->buffer_size = 0x3c1;
 		priv->flow_sensor_offset = 0x6e;
+		priv->temp_ctrl_offset = 0xa;
 
 		priv->temp_label = label_temp_sensors;
 		priv->speed_label = label_fan_flow_speed_quadro;
