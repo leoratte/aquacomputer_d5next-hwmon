@@ -28,6 +28,7 @@
 #include <linux/hwmon-sysfs.h>
 #include <linux/jiffies.h>
 #include <linux/ktime.h>
+#include <linux/leds.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/seq_file.h>
@@ -123,6 +124,10 @@ static u8 aquastreamxt_secondary_ctrl_report[] = {
 #define POWERADJUST3_STATUS_REPORT_ID	0x03
 
 #define HIGHFLOW_STATUS_REPORT_ID	0x02
+
+/* Led */
+#define AQC_LED_ON	0
+#define AQC_LED_OFF	3
 
 /* Info, sensor sizes and offsets for most Aquacomputer devices */
 #define AQC_SERIAL_START		0x03
@@ -304,6 +309,8 @@ static u16 quadro_sensor_fan_offsets[] = { 0x70, 0x7D, 0x8A, 0x97 };
 /* Control report offsets for the Quadro */
 #define QUADRO_TEMP_CTRL_OFFSET		0xA
 #define QUADRO_FLOW_PULSES_CTRL_OFFSET	0x6
+#define QUADRO_CTRL_LED_BRIGHTNESS_OFFSET	0x18a
+#define QUADRO_CTRL_LED_STATE_OFFSET		0x18c
 /* Fan speed offsets (0-100%) */
 static u16 quadro_ctrl_fan_offsets[] = { 0x36, 0x8b, 0xe0, 0x135 };
 /* Fan curve "hold min power" and "start boost" offsets */
@@ -677,6 +684,8 @@ static const char *const label_highflow_speeds[] = {
 	"Flow speed [dL/h]"
 };
 
+static const char quadro_led_name[] = "quadro:rgb:light";
+
 struct aqc_fan_structure_offsets {
 	u8 voltage;
 	u8 curr;
@@ -706,6 +715,11 @@ static struct aqc_fan_structure_offsets aqc_general_fan_structure = {
 	.curr = AQC_FAN_CURRENT_OFFSET,
 	.power = AQC_FAN_POWER_OFFSET,
 	.speed = AQC_FAN_SPEED_OFFSET
+};
+
+struct aqc_leds {
+	struct led_classdev cdev;
+	struct aqc_data *priv;
 };
 
 struct aqc_data {
@@ -804,6 +818,12 @@ struct aqc_data {
 	const char *const *current_label;
 
 	unsigned long updated;
+
+	/* Led stuff */
+	struct aqc_leds *led_dev;
+	u16 led_brightness_offset;
+	u16 led_state_offset;
+	const char *led_name;
 };
 
 /* Converts from centi-percent */
@@ -2746,6 +2766,46 @@ static int aqc_raw_event(struct hid_device *hdev, struct hid_report *report, u8 
 	return 0;
 }
 
+static enum led_brightness aqc_led_get(struct led_classdev *led_cdev)
+{
+	struct aqc_leds *led = container_of(led_cdev, struct aqc_leds, cdev);
+	struct aqc_data *priv = led->priv;
+	int ret;
+	long val;
+
+	ret = aqc_get_ctrl_val(priv, priv->led_brightness_offset, &val, 8);
+	if (ret < 0)
+		return ret;
+
+	return val;
+}
+
+static void aqc_led_set(struct led_classdev *led_cdev,
+			enum led_brightness brightness)
+{
+	struct aqc_leds *led = container_of(led_cdev, struct aqc_leds, cdev);
+	struct aqc_data *priv = led->priv;
+	/* Arrays for setting multiple values at once in the control report */
+	int ctrl_values_offsets[2];
+	long ctrl_values[2];
+	int ctrl_values_types[2];
+
+	brightness = clamp_val(brightness, 0, 255);
+	if (brightness == 0)
+		ctrl_values[0] = AQC_LED_OFF;
+	else
+		ctrl_values[0] = AQC_LED_ON;
+
+	ctrl_values_offsets[0] = priv->led_state_offset;
+	ctrl_values_types[0] = AQC_8;
+
+	ctrl_values_offsets[1] = priv->led_brightness_offset;
+	ctrl_values[1] = brightness;
+	ctrl_values_types[1] = AQC_8;
+
+	aqc_set_ctrl_vals(priv, ctrl_values_offsets, ctrl_values, ctrl_values_types, 2);
+}
+
 #ifdef CONFIG_DEBUG_FS
 
 static int serial_number_show(struct seq_file *seqf, void *unused)
@@ -2853,6 +2913,26 @@ static void aqc_debugfs_init(struct aqc_data *priv)
 }
 
 #endif
+
+static int aqc_register_leds(struct hid_device *hdev)
+{
+	int ret;
+	struct aqc_data *priv;
+
+	priv = hid_get_drvdata(hdev);
+	priv->led_dev = devm_kzalloc(&hdev->dev, sizeof(struct aqc_leds), GFP_KERNEL);
+	if (!priv->led_dev)
+		return -ENOMEM;
+
+	priv->led_dev->priv = priv;
+	priv->led_dev->cdev.name = priv->led_name;
+	priv->led_dev->cdev.brightness_get = aqc_led_get;
+	priv->led_dev->cdev.brightness_set = aqc_led_set;
+	priv->led_dev->cdev.max_brightness = LED_FULL;
+
+	ret = devm_led_classdev_register(&hdev->dev, &priv->led_dev->cdev);
+	return ret;
+}
 
 static int aqc_probe(struct hid_device *hdev, const struct hid_device_id *id)
 {
@@ -3045,6 +3125,10 @@ static int aqc_probe(struct hid_device *hdev, const struct hid_device_id *id)
 		priv->ctrl_report_delay = CTRL_REPORT_DELAY;
 		priv->temp_ctrl_offset = QUADRO_TEMP_CTRL_OFFSET;
 		priv->flow_pulses_ctrl_offset = QUADRO_FLOW_PULSES_CTRL_OFFSET;
+
+		priv->led_brightness_offset = QUADRO_CTRL_LED_BRIGHTNESS_OFFSET;
+		priv->led_state_offset = QUADRO_CTRL_LED_STATE_OFFSET;
+		priv->led_name = quadro_led_name;
 
 		priv->temp_label = label_temp_sensors;
 		priv->virtual_temp_label = label_virtual_temp_sensors;
@@ -3282,6 +3366,9 @@ static int aqc_probe(struct hid_device *hdev, const struct hid_device_id *id)
 		goto fail_and_close;
 	}
 
+	if (priv->kind == quadro)
+		aqc_register_leds(hdev);
+
 	aqc_debugfs_init(priv);
 
 	return 0;
@@ -3296,6 +3383,8 @@ fail_and_stop:
 static void aqc_remove(struct hid_device *hdev)
 {
 	struct aqc_data *priv = hid_get_drvdata(hdev);
+
+	devm_led_classdev_unregister(&hdev->dev, &priv->led_dev->cdev);
 
 	debugfs_remove_recursive(priv->debugfs);
 	hwmon_device_unregister(priv->hwmon_dev);
