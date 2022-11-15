@@ -128,7 +128,6 @@ static u8 aquastreamxt_secondary_ctrl_report[] = {
 
 /* Report offsets for fan control */
 #define AQC_FAN_CTRL_PWM_OFFSET		0x01
-#define AQC_FAN_CTRL_TEMP_SELECT_OFFSET	0x03
 #define AQC_FAN_CTRL_TEMP_CURVE_START	0x15
 #define AQC_FAN_CTRL_PWM_CURVE_START	0x35
 
@@ -1016,7 +1015,6 @@ static umode_t aqc_is_visible(const void *data, enum hwmon_sensor_types type, u3
 			default:
 				switch (attr) {
 				case hwmon_pwm_input:
-				case hwmon_pwm_auto_channels_temp:
 					return 0644;
 				default:
 					break;
@@ -1352,16 +1350,6 @@ static int aqc_read(struct device *dev, enum hwmon_sensor_types type, u32 attr,
 				break;
 			}
 			break;
-		case hwmon_pwm_auto_channels_temp:
-			ret =
-			    aqc_get_ctrl_val(priv,
-					     priv->fan_ctrl_offsets[channel] +
-					     AQC_FAN_CTRL_TEMP_SELECT_OFFSET, val, AQC_BE16);
-			if (ret < 0)
-				return ret;
-
-			*val = 1 << *val;
-			break;
 		case hwmon_pwm_mode:
 			ret = aqc_get_ctrl_val(priv,
 					       priv->fan_ctrl_offsets[channel] +
@@ -1508,7 +1496,7 @@ static int aqc_leakshield_send_report(struct aqc_data *priv, int channel, long v
 static int aqc_write(struct device *dev, enum hwmon_sensor_types type, u32 attr, int channel,
 		     long val)
 {
-	int ret, pwm_value, temp_sensor;
+	int ret, pwm_value;
 	long ctrl_mode;
 	/* Arrays for setting multiple values at once in the control report */
 	int ctrl_values_offsets[4];
@@ -1694,35 +1682,6 @@ static int aqc_write(struct device *dev, enum hwmon_sensor_types type, u32 attr,
 					return ret;
 				break;
 			}
-			break;
-		case hwmon_pwm_auto_channels_temp:
-			switch (val) {
-			case 1:
-				temp_sensor = 0;
-				break;
-			case 2:
-				temp_sensor = 1;
-				break;
-			case 4:
-				temp_sensor = 2;
-				break;
-			case 8:
-				temp_sensor = 3;
-				break;
-			default:
-				return -EINVAL;
-			}
-
-			if (temp_sensor >= priv->num_temp_sensors)
-				return -EINVAL;
-
-			ret =
-			    aqc_set_ctrl_val(priv,
-					     priv->fan_ctrl_offsets[channel] +
-					     AQC_FAN_CTRL_TEMP_SELECT_OFFSET, temp_sensor,
-					     AQC_BE16);
-			if (ret < 0)
-				return ret;
 			break;
 		case hwmon_pwm_mode:
 			switch (val) {
@@ -2424,18 +2383,18 @@ static const struct hwmon_channel_info *aqc_info[] = {
 			   HWMON_P_INPUT | HWMON_P_LABEL,
 			   HWMON_P_INPUT | HWMON_P_LABEL),
 	HWMON_CHANNEL_INFO(pwm,
-			   HWMON_PWM_INPUT | HWMON_PWM_ENABLE | HWMON_PWM_AUTO_CHANNELS_TEMP |
+			   HWMON_PWM_INPUT | HWMON_PWM_ENABLE |
 			   HWMON_PWM_MODE,
-			   HWMON_PWM_INPUT | HWMON_PWM_ENABLE | HWMON_PWM_AUTO_CHANNELS_TEMP |
+			   HWMON_PWM_INPUT | HWMON_PWM_ENABLE |
 			   HWMON_PWM_MODE,
-			   HWMON_PWM_INPUT | HWMON_PWM_ENABLE | HWMON_PWM_AUTO_CHANNELS_TEMP |
+			   HWMON_PWM_INPUT | HWMON_PWM_ENABLE |
 			   HWMON_PWM_MODE,
-			   HWMON_PWM_INPUT | HWMON_PWM_ENABLE | HWMON_PWM_AUTO_CHANNELS_TEMP |
+			   HWMON_PWM_INPUT | HWMON_PWM_ENABLE |
 			   HWMON_PWM_MODE,
-			   HWMON_PWM_INPUT | HWMON_PWM_ENABLE | HWMON_PWM_AUTO_CHANNELS_TEMP,
-			   HWMON_PWM_INPUT | HWMON_PWM_ENABLE | HWMON_PWM_AUTO_CHANNELS_TEMP,
-			   HWMON_PWM_INPUT | HWMON_PWM_ENABLE | HWMON_PWM_AUTO_CHANNELS_TEMP,
-			   HWMON_PWM_INPUT | HWMON_PWM_ENABLE | HWMON_PWM_AUTO_CHANNELS_TEMP),
+			   HWMON_PWM_INPUT | HWMON_PWM_ENABLE,
+			   HWMON_PWM_INPUT | HWMON_PWM_ENABLE,
+			   HWMON_PWM_INPUT | HWMON_PWM_ENABLE,
+			   HWMON_PWM_INPUT | HWMON_PWM_ENABLE),
 	HWMON_CHANNEL_INFO(in,
 			   HWMON_I_INPUT | HWMON_I_LABEL,
 			   HWMON_I_INPUT | HWMON_I_LABEL,
