@@ -6,12 +6,24 @@ jobs:
   checkpatch:
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v3
         with:
           path: src
-      - uses: actions/checkout@v2
+
+      - name: cache linux
+        id: cache-linux
+        uses: actions/cache@v3
+        env:
+          cache-name: cache-linux-kernel
+        with:
+          path: ./linux
+          key: ${{ runner.os }}
+
+      - uses: actions/checkout@v3
+        if: ${{ steps.cache-linux.outputs.cache-hit != 'true' }}
         with:
           repository: torvalds/linux
           path: linux
+
       - run: make KDIR="${{ github.workspace }}/linux" checkpatch
         working-directory: src
