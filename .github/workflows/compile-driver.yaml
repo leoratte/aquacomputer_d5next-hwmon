@@ -33,8 +33,8 @@
       - name: install libelf-dev
         if: ${{ steps.cache-linux.outputs.cache-hit != 'true' }}
         run: |
-          sudo apt update
-          sudo apt install libelf-dev
+          sudo apt-get update
+          sudo apt-get install libelf-dev
 
       - name: prepare linux
         if: ${{ steps.cache-linux.outputs.cache-hit != 'true' }}
