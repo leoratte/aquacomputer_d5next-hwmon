@@ -13,5 +13,6 @@ jobs:
         with:
           repository: torvalds/linux
           path: linux
+          ref: "v6.1"
       - run: make KDIR="${{ github.workspace }}/linux" checkpatch
         working-directory: src
