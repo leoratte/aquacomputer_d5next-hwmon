@@ -107,6 +107,14 @@ static u8 aquaero_secondary_ctrl_report[] = {
 static u8 aquastreamxt_secondary_ctrl_report[] = {
 	0x02, 0x05, 0x00, 0x00
 };
+//TODO: find correct values
+/* Secondary HID report values for Aquastream Ultimate */
+#define AQUASTREAMULT_SECONDARY_CTRL_REPORT_ID		0x02
+#define AQUASTREAMULT_SECONDARY_CTRL_REPORT_SIZE	0x04
+
+static u8 aquastreamult_secondary_ctrl_report[] = {
+	0x02, 0x05, 0x00, 0x00
+};
 
 /* Data types for reading and writing control reports */
 #define AQC_8		0
@@ -220,6 +228,7 @@ static u8 d5next_ctrl_fan_curve_fallback_power_offsets[] = { 0x3D, 0x34 };
 /* Pump does not follow the standard structure, so only consider the fan */
 #define AQUASTREAMULT_NUM_FANS		1
 #define AQUASTREAMULT_NUM_SENSORS	2
+#define AQUASTREAMULT_CTRL_REPORT_SIZE	0x10A
 
 /* Sensor report offsets for the Aquastream Ultimate pump */
 #define AQUASTREAMULT_SENSOR_START		0x2D
@@ -235,6 +244,10 @@ static u8 d5next_ctrl_fan_curve_fallback_power_offsets[] = { 0x3D, 0x34 };
 #define AQUASTREAMULT_FAN_POWER_OFFSET		0x04
 #define AQUASTREAMULT_FAN_SPEED_OFFSET		0x06
 static u16 aquastreamult_sensor_fan_offsets[] = { AQUASTREAMULT_FAN_OFFSET };
+
+/* Control report offsets for the Aquastream Ultimate pump */
+#define AQUASTREAMULT_TEMP_CTRL_OFFSET		0x14
+static u16 aquastreamult_ctrl_fan_offsets[] = { 0x49, 0x05 };
 
 /* Spec and sensor report offset for the Farbwerk RGB controller */
 #define FARBWERK_NUM_SENSORS		4
@@ -3118,9 +3131,13 @@ static int aqc_probe(struct hid_device *hdev, const struct hid_device_id *id)
 
 		priv->num_fans = AQUASTREAMULT_NUM_FANS;
 		priv->fan_sensor_offsets = aquastreamult_sensor_fan_offsets;
+		priv->fan_ctrl_offsets = aquastreamult_ctrl_fan_offsets;
 
 		priv->num_temp_sensors = AQUASTREAMULT_NUM_SENSORS;
 		priv->temp_sensor_start_offset = AQUASTREAMULT_SENSOR_START;
+
+		priv->buffer_size = AQUASTREAMULT_CTRL_REPORT_SIZE;
+		priv->temp_ctrl_offset = AQUASTREAMULT_TEMP_CTRL_OFFSET;
 
 		priv->temp_label = label_aquastreamult_temp;
 		priv->speed_label = label_aquastreamult_speeds;
