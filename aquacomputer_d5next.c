@@ -106,6 +106,9 @@ static u8 aquaero_secondary_ctrl_report[] = {
 #define AQC_FAN_POWER_OFFSET		0x06
 #define AQC_FAN_SPEED_OFFSET		0x08
 
+/* Report offsets for fan control */
+#define AQC_FAN_CTRL_PWM_OFFSET		0x01
+
 /* Specs of the Aquaero fan controllers */
 #define AQUAERO_SERIAL_START			0x07
 #define AQUAERO_FIRMWARE_VERSION		0x0B
@@ -155,7 +158,7 @@ static u16 d5next_sensor_fan_offsets[] = { D5NEXT_PUMP_OFFSET, D5NEXT_FAN_OFFSET
 
 /* Control report offsets for the D5 Next pump */
 #define D5NEXT_TEMP_CTRL_OFFSET		0x2D	/* Temperature sensor offsets location */
-static u16 d5next_ctrl_fan_offsets[] = { 0x97, 0x42 };	/* Pump and fan speed (from 0-100%) */
+static u16 d5next_ctrl_fan_offsets[] = { 0x96, 0x41 };	/* Start of fan control */
 
 /* Specs of the Aquastream Ultimate pump */
 /* Pump does not follow the standard structure, so only consider the fan */
@@ -208,7 +211,7 @@ static u16 octo_sensor_fan_offsets[] = { 0x7D, 0x8A, 0x97, 0xA4, 0xB1, 0xBE, 0xC
 /* Control report offsets for the Octo */
 #define OCTO_TEMP_CTRL_OFFSET		0xA
 /* Fan speed offsets (0-100%) */
-static u16 octo_ctrl_fan_offsets[] = { 0x5B, 0xB0, 0x105, 0x15A, 0x1AF, 0x204, 0x259, 0x2AE };
+static u16 octo_ctrl_fan_offsets[] = { 0x5A, 0xAF, 0x104, 0x159, 0x1AE, 0x203, 0x258, 0x2AD };
 
 /* Specs of Quadro fan controller */
 #define QUADRO_NUM_FANS			4
@@ -227,7 +230,7 @@ static u16 quadro_sensor_fan_offsets[] = { 0x70, 0x7D, 0x8A, 0x97 };
 /* Control report offsets for the Quadro */
 #define QUADRO_TEMP_CTRL_OFFSET		0xA
 #define QUADRO_FLOW_PULSES_CTRL_OFFSET	0x6
-static u16 quadro_ctrl_fan_offsets[] = { 0x37, 0x8c, 0xe1, 0x136 }; /* Fan speed offsets (0-100%) */
+static u16 quadro_ctrl_fan_offsets[] = { 0x36, 0x8b, 0xe0, 0x135 }; /* Start of fan control */
 
 /* Specs of High Flow Next flow sensor */
 #define HIGHFLOWNEXT_NUM_SENSORS	2
@@ -1053,8 +1056,8 @@ static int aqc_read(struct device *dev, enum hwmon_sensor_types type, u32 attr,
 			*val = aqc_percent_to_pwm(*val);
 			break;
 		default:
-			ret = aqc_get_ctrl_val(priv, priv->fan_ctrl_offsets[channel],
-					       val, AQC_BE16);
+			ret = aqc_get_ctrl_val(priv, priv->fan_ctrl_offsets[channel]
+					       + AQC_FAN_CTRL_PWM_OFFSET, val, AQC_BE16);
 			if (ret < 0)
 				return ret;
 
@@ -1192,7 +1195,8 @@ static int aqc_write(struct device *dev, enum hwmon_sensor_types type, u32 attr,
 					return ret;
 				break;
 			default:
-				ret = aqc_set_ctrl_val(priv, priv->fan_ctrl_offsets[channel],
+				ret = aqc_set_ctrl_val(priv, priv->fan_ctrl_offsets[channel]
+						       + AQC_FAN_CTRL_PWM_OFFSET,
 						       pwm_value, AQC_BE16);
 				if (ret < 0)
 					return ret;
