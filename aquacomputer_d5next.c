@@ -787,10 +787,23 @@ static umode_t aqc_is_visible(const void *data, enum hwmon_sensor_types type, u3
 		break;
 	case hwmon_pwm:
 		if (priv->fan_ctrl_offsets && channel < priv->num_fans) {
-			switch (attr) {
-			case hwmon_pwm_input:
-				return 0644;
+			switch (priv->kind) {
+			case aquaero:
+				switch (attr) {
+				case hwmon_pwm_input:
+					return 0644;
+				default:
+					break;
+				}
+				break;
 			default:
+				switch (attr) {
+				case hwmon_pwm_enable:
+				case hwmon_pwm_input:
+					return 0644;
+				default:
+					break;
+				}
 				break;
 			}
 		}
@@ -1046,23 +1059,39 @@ static int aqc_read(struct device *dev, enum hwmon_sensor_types type, u32 attr,
 		*val = priv->power_input[channel];
 		break;
 	case hwmon_pwm:
-		switch (priv->kind) {
-		case aquaero:
-			ret = aqc_get_ctrl_val(priv,
-				AQUAERO_CTRL_PRESET_START + channel * AQUAERO_CTRL_PRESET_SIZE,
-				val, AQC_BE16);
-			if (ret < 0)
-				return ret;
-			*val = aqc_percent_to_pwm(*val);
-			break;
-		default:
-			ret = aqc_get_ctrl_val(priv, priv->fan_ctrl_offsets[channel]
-					       + AQC_FAN_CTRL_PWM_OFFSET, val, AQC_BE16);
+		switch (attr) {
+		case hwmon_pwm_enable:
+			ret = aqc_get_ctrl_val(priv, priv->fan_ctrl_offsets[channel],
+					       val, AQC_8);
 			if (ret < 0)
 				return ret;
 
-			*val = aqc_percent_to_pwm(*val);
+			/* Incrementing to satisfy hwmon rules */
+			*val = *val + 1;
 			break;
+		case hwmon_pwm_input:
+			switch (priv->kind) {
+			case aquaero:
+				ret = aqc_get_ctrl_val(priv,
+					AQUAERO_CTRL_PRESET_START + channel * AQUAERO_CTRL_PRESET_SIZE,
+					val, AQC_BE16);
+				if (ret < 0)
+					return ret;
+
+				*val = aqc_percent_to_pwm(*val);
+				break;
+			default:
+				ret = aqc_get_ctrl_val(priv, priv->fan_ctrl_offsets[channel]
+						       + AQC_FAN_CTRL_PWM_OFFSET, val, AQC_BE16);
+				if (ret < 0)
+					return ret;
+
+				*val = aqc_percent_to_pwm(*val);
+				break;
+			}
+			break;
+		default:
+			return -EOPNOTSUPP;
 		}
 		break;
 	case hwmon_in:
@@ -1121,6 +1150,7 @@ static int aqc_write(struct device *dev, enum hwmon_sensor_types type, u32 attr,
 		     long val)
 {
 	int ret, pwm_value;
+	long ctrl_mode;
 	/* Arrays for setting multiple values at once in the control report */
 	int ctrl_values_offsets[4];
 	long ctrl_values[4];
@@ -1158,6 +1188,47 @@ static int aqc_write(struct device *dev, enum hwmon_sensor_types type, u32 attr,
 		break;
 	case hwmon_pwm:
 		switch (attr) {
+		case hwmon_pwm_enable:
+			switch (priv->kind) {
+			case d5next:
+				if (val < 0 || val > 3)
+					return -EINVAL;
+				break;
+			case octo:
+			case quadro:
+				if (val < 0 || val > priv->num_fans + 3)
+					return -EINVAL;
+
+				/* Fan can't follow itself */
+				if (val == channel + 4)
+					return -EINVAL;
+
+				/*
+				 * Check if fan we want to follow is following another one
+				 * currently. This is disallowed in the official software
+				 */
+				if (val > 3) {
+					ret =
+					    aqc_get_ctrl_val(priv, priv->fan_ctrl_offsets[val - 4],
+							     &ctrl_mode, AQC_8);
+					if (ret < 0)
+						return ret;
+
+					/* The fan is indeed following another one */
+					if (ctrl_mode > 2)
+						return -EINVAL;
+				}
+				break;
+			default:
+				return -EOPNOTSUPP;
+			}
+
+			/* Decrement to convert from hwmon to aqc */
+			ret = aqc_set_ctrl_val(priv,
+					       priv->fan_ctrl_offsets[channel], val - 1, AQC_8);
+			if (ret < 0)
+				return ret;
+			break;
 		case hwmon_pwm_input:
 			pwm_value = aqc_pwm_to_percent(val);
 			if (pwm_value < 0)
@@ -1263,14 +1334,14 @@ static const struct hwmon_channel_info * const aqc_info[] = {
 			   HWMON_P_INPUT | HWMON_P_LABEL,
 			   HWMON_P_INPUT | HWMON_P_LABEL),
 	HWMON_CHANNEL_INFO(pwm,
-			   HWMON_PWM_INPUT,
-			   HWMON_PWM_INPUT,
-			   HWMON_PWM_INPUT,
-			   HWMON_PWM_INPUT,
-			   HWMON_PWM_INPUT,
-			   HWMON_PWM_INPUT,
-			   HWMON_PWM_INPUT,
-			   HWMON_PWM_INPUT),
+			   HWMON_PWM_INPUT | HWMON_PWM_ENABLE,
+			   HWMON_PWM_INPUT | HWMON_PWM_ENABLE,
+			   HWMON_PWM_INPUT | HWMON_PWM_ENABLE,
+			   HWMON_PWM_INPUT | HWMON_PWM_ENABLE,
+			   HWMON_PWM_INPUT | HWMON_PWM_ENABLE,
+			   HWMON_PWM_INPUT | HWMON_PWM_ENABLE,
+			   HWMON_PWM_INPUT | HWMON_PWM_ENABLE,
+			   HWMON_PWM_INPUT | HWMON_PWM_ENABLE),
 	HWMON_CHANNEL_INFO(in,
 			   HWMON_I_INPUT | HWMON_I_LABEL,
 			   HWMON_I_INPUT | HWMON_I_LABEL,

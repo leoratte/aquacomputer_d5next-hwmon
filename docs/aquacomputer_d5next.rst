@@ -76,6 +76,34 @@ The Poweradjust 3 controller exposes a single external temperature sensor.
 Depending on the device, not all sysfs and debugfs entries will be available.
 Writing to virtual temperature sensors is not currently supported.
 
+The possible values for pwm_enable are:
+for D5 Next, Quadro and Octo
+
+= =================
+0 no change
+1 manual pwm mode
+2 PID control mode
+3 fan curve mode
+= =================
+
+additionally for Quadro and Octo
+
+= ===============
+4 follow fan1 pwm
+5 follow fan2 pwm
+6 follow fan3 pwm
+7 follow fan4 pwm
+= ===============
+
+additionally for Octo
+
+== ===============
+8  follow fan5 pwm
+9  follow fan6 pwm
+10 follow fan7 pwm
+11 follow fan8 pwm
+== ===============
+
 Usage notes
 -----------
 
@@ -97,6 +125,7 @@ power[1-8]_input Pump/fan power (in micro Watts)
 in[0-7]_input    Pump/fan voltage (in milli Volts)
 curr[1-8]_input  Pump/fan current (in milli Amperes)
 pwm[1-8]         Fan PWM (0 - 255)
+pwm[1-8]_enable  Fan control mode
 ================ ==============================================================
 
 Debugfs entries
