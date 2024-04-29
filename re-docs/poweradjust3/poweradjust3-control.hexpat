@@ -1,0 +1,17 @@
+u8 fan_ctrl_mode @ 0x1;
+u8 pwm @ 0x2;
+le u16 flow_rate_ticks @ 0x5;
+le u16 fan_speed_target @ 0x7;
+u8 aquabus_address @ 0xb;
+le s16 temp_offset @ 0xc;
+le u16 alarm_temp_limit @ 0xe;
+le u16 flow_rate_limit @ 0x10;
+u8 alarm_settings @ 0x12;
+u8 speed_out_mode @ 0x13;
+u8 start_boost @ 0x14;
+u8 start_boost_power @ 0x15;
+u8 start_boost_duration @ 0x16;
+le u16 pid_p @ 0x25;
+le u16 pid_i @ 0x27;
+le u16 pid_d @ 0x29;
+le u16 current_offset @ 0x2b;
