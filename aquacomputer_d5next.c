@@ -402,6 +402,9 @@ static u16 aquastreamxt_ctrl_fan_offsets[] = { 0x8, 0x1b };
 #define POWERADJUST3_FLOW_SENSOR_OFFSET	0x09
 #define POWERADJUST3_FAN_SPEED_OFFSET	0x0b
 
+/* Control report offsets for Poweradjust 3 */
+static u16 poweradjust3_ctrl_fan_offsets[] = { 0x2 };
+
 /* Specs of the High Flow USB */
 #define HIGHFLOW_NUM_SENSORS		2
 #define HIGHFLOW_NUM_FLOW_SENSORS	1
@@ -1053,6 +1056,7 @@ static umode_t aqc_is_visible(const void *data, enum hwmon_sensor_types type, u3
 				}
 				break;
 			case aquastreamxt:
+			case poweradjust3:
 				switch (attr) {
 				case hwmon_pwm_input:
 					return 0644;
@@ -1435,6 +1439,12 @@ static int aqc_read(struct device *dev, enum hwmon_sensor_types type, u32 attr,
 						return ret;
 				}
 				break;
+			case poweradjust3:
+				ret = aqc_get_ctrl_val(priv, priv->fan_ctrl_offsets[channel],
+						       val, AQC_8);
+				if (ret < 0)
+					return ret;
+				break;
 			default:
 				ret =
 				    aqc_get_ctrl_val(priv,
@@ -1775,6 +1785,12 @@ static int aqc_write(struct device *dev, enum hwmon_sensor_types type, u32 attr,
 				}
 				ret = aqc_set_ctrl_vals(priv, ctrl_values_offsets, ctrl_values,
 							ctrl_values_types, 2);
+				if (ret < 0)
+					return ret;
+				break;
+			case poweradjust3:
+				ret = aqc_set_ctrl_val(priv, priv->fan_ctrl_offsets[channel],
+						       val, AQC_8);
 				if (ret < 0)
 					return ret;
 				break;
@@ -3129,6 +3145,7 @@ static int aqc_probe(struct hid_device *hdev, const struct hid_device_id *id)
 		priv->kind = poweradjust3;
 
 		priv->num_fans = POWERADJUST3_NUM_FANS;
+		priv->fan_ctrl_offsets = poweradjust3_ctrl_fan_offsets;
 
 		priv->num_temp_sensors = POWERADJUST3_NUM_SENSORS;
 		priv->temp_sensor_start_offset = POWERADJUST3_SENSOR_START;
