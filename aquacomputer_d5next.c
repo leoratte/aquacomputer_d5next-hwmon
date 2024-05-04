@@ -101,6 +101,14 @@ static u8 aquastreamxt_secondary_ctrl_report[] = {
 	0x02, 0x05, 0x00, 0x00
 };
 
+/* Secondary HID report values for Poweradjust 3 */
+#define POWERADJUST3_SECONDARY_CTRL_REPORT_ID	0x01
+#define POWERADJUST3_SECONDARY_CTRL_REPORT_SIZE	0x05
+
+static u8 poweradjust3_secondary_ctrl_report[] = {
+	0x01, 0x02, 0x00, 0x00, 0x00
+};
+
 /* Data types for reading and writing control reports */
 #define AQC_8		0
 #define AQC_BE16	1
@@ -114,6 +122,7 @@ static u8 aquastreamxt_secondary_ctrl_report[] = {
 #define AQUASTREAMXT_CTRL_REPORT_ID	0x06
 
 #define POWERADJUST3_STATUS_REPORT_ID	0x03
+#define POWERADJUST3_CTRL_REPORT_ID	0x04
 
 #define HIGHFLOW_STATUS_REPORT_ID	0x02
 
@@ -384,6 +393,7 @@ static u16 aquastreamxt_ctrl_fan_offsets[] = { 0x8, 0x1b };
 #define POWERADJUST3_NUM_SENSORS	2
 #define POWERADJUST3_NUM_FLOW_SENSORS	1
 #define POWERADJUST3_SENSOR_REPORT_SIZE	0x32
+#define POWERADJUST3_CTRL_REPORT_SIZE	0x2e
 
 /* Sensor report offsets for the Poweradjust 3 */
 #define POWERADJUST3_SENSOR_START	0x01
@@ -890,7 +900,7 @@ static int aqc_send_ctrl_data(struct aqc_data *priv)
 	aqc_delay_ctrl_report(priv);
 
 	/* Checksum is not needed for Aquaero and Aquastream XT */
-	if (priv->kind != aquaero && priv->kind != aquastreamxt) {
+	if (priv->kind != aquaero && priv->kind != aquastreamxt && priv->kind != poweradjust3) {
 		/* Init and xorout value for CRC-16/USB is 0xffff */
 		checksum =
 		    crc16(0xffff, priv->buffer + priv->checksum_start, priv->checksum_length);
@@ -3124,7 +3134,13 @@ static int aqc_probe(struct hid_device *hdev, const struct hid_device_id *id)
 		priv->temp_sensor_start_offset = POWERADJUST3_SENSOR_START;
 		priv->num_flow_sensors = POWERADJUST3_NUM_FLOW_SENSORS;
 		priv->flow_sensors_start_offset = POWERADJUST3_FLOW_SENSOR_OFFSET;
-		priv->buffer_size = POWERADJUST3_SENSOR_REPORT_SIZE;
+
+		/*
+		 * Since we use the same buffer for both sensor and control
+		 * report storage on legacy devices, reserve enough space
+		 */
+		priv->buffer_size = max(POWERADJUST3_SENSOR_REPORT_SIZE,
+					POWERADJUST3_CTRL_REPORT_SIZE);
 
 		priv->temp_label = label_poweradjust3_temp_sensors;
 		priv->speed_label = label_poweradjust3_speeds;
@@ -3178,6 +3194,10 @@ static int aqc_probe(struct hid_device *hdev, const struct hid_device_id *id)
 		priv->firmware_version_offset = POWERADJUST3_FIRMWARE_VERSION;
 
 		priv->status_report_id = POWERADJUST3_STATUS_REPORT_ID;
+		priv->ctrl_report_id = POWERADJUST3_CTRL_REPORT_ID;
+		priv->secondary_ctrl_report_id = POWERADJUST3_SECONDARY_CTRL_REPORT_ID;
+		priv->secondary_ctrl_report_size = POWERADJUST3_SECONDARY_CTRL_REPORT_SIZE;
+		priv->secondary_ctrl_report = poweradjust3_secondary_ctrl_report;
 		break;
 	case highflow:
 		priv->serial_number_start_offset = HIGHFLOW_SERIAL_START;
